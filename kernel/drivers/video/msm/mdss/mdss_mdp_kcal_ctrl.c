@@ -565,7 +565,6 @@ static ssize_t kcal_invert_store(struct device *dev,
 		return -EINVAL;
 	}
 
-	mutex_lock(&kcald->lock);
 	//disable
 	kcald->lut_data->invert = 0;
 
