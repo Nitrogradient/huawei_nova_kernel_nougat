@@ -25,6 +25,7 @@
 #include <linux/delay.h>
 #include <linux/qpnp/qpnp-haptic.h>
 #include "../../staging/android/timed_output.h"
+#include "qpnp-haptic.h"
 
 #define QPNP_IRQ_FLAGS	(IRQF_TRIGGER_RISING | \
 			IRQF_TRIGGER_FALLING | \
@@ -1648,6 +1649,45 @@ static int qpnp_hap_set(struct qpnp_hap *hap, int on)
 
 	return rc;
 }
+
+void qpnp_hap_td_enable_external(int value)
+{
+
+	mutex_lock(&ghap->lock);
+	if (ghap->act_type == QPNP_HAP_LRA &&
+				ghap->correct_lra_drive_freq)
+		hrtimer_cancel(&ghap->auto_res_err_poll_timer);
+
+	hrtimer_cancel(&ghap->hap_timer);
+	dev_err(&ghap->spmi->dev, "enable vibrator value=%d.\n",value);
+
+	if (value == 0) {
+		if (ghap->state == 0) {
+			mutex_unlock(&ghap->lock);
+			return;
+		}
+		ghap->state = 0;
+	} else {
+		value = (value > ghap->timeout_ms ?
+				 ghap->timeout_ms : value);
+		/* change vibrating time to 60ms in project CANNES
+		 *while vibrating time is between 10ms to 60ms */
+		if (true == ghap->constant_vibrate_flag) {
+			if ((value <= CANNES_VIBRATING_MAX)
+				&& (value > CANNES_VIBRATING_MIN)) {
+				value = CANNES_VIBRATING_MAX;
+			}
+		}
+		dev_info(&ghap->spmi->dev, "vibrating_time is %d\n",value);
+		ghap->state = 1;
+		hrtimer_start(&ghap->hap_timer,
+			      ktime_set(value / 1000, (value % 1000) * 1000000),
+			      HRTIMER_MODE_REL);
+	}
+	mutex_unlock(&ghap->lock);
+	schedule_work(&ghap->work);
+}
+
 
 /* enable interface from timed output class */
 static void qpnp_hap_td_enable(struct timed_output_dev *dev, int value)

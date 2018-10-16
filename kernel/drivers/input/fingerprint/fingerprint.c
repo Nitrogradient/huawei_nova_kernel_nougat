@@ -17,10 +17,54 @@
 #include <linux/platform_device.h>
 #include <linux/wakelock.h>
 #include "fingerprint.h"
+#include "../../platform/msm/qpnp-haptic.h"
 #if defined(CONFIG_FB)
 #include <linux/notifier.h>
 #include <linux/fb.h>
 #endif
+
+#define FP2WAKE 1
+#define FP2WAKEDEBUG 0
+
+#if FP2WAKE
+#define FP2W_DEFAULT			1
+#define FP2W_PWRKEY_DUR		60
+#define DEFAULT_VIBR_TIME		32
+
+static struct input_dev * fingerprint2wake_pwrdev;
+int fp2w_switch = FP2W_DEFAULT;
+
+static DEFINE_MUTEX(pwrkeyworklock);
+
+/* PowerKey work func */
+static void fingerprint2wake_presspwr(struct work_struct * fingerprint2wake_presspwr_work) {
+
+	if (!mutex_trylock(&pwrkeyworklock))
+                return;
+#if FP2WAKEDEBUG
+	pr_info("FPDEBUG - Executing fingerprint2wake_presspwr\n");
+#endif
+	input_event(fingerprint2wake_pwrdev, EV_KEY, KEY_POWER, 1);
+	input_event(fingerprint2wake_pwrdev, EV_SYN, 0, 0);
+	msleep(FP2W_PWRKEY_DUR);
+	input_event(fingerprint2wake_pwrdev, EV_KEY, KEY_POWER, 0);
+	input_event(fingerprint2wake_pwrdev, EV_SYN, 0, 0);
+	msleep(FP2W_PWRKEY_DUR);
+        mutex_unlock(&pwrkeyworklock);
+	qpnp_hap_td_enable_external(DEFAULT_VIBR_TIME);
+	return;
+}
+
+static DECLARE_WORK(fingerprint2wake_presspwr_work, fingerprint2wake_presspwr);
+
+static void fingerprint2wake_pwrtrigger(void) {
+
+	schedule_work(&fingerprint2wake_presspwr_work);
+        return;
+}
+#endif
+
+
 extern void adreno_force_waking_gpu(void);
 unsigned int snr_flag = 0;
 
@@ -607,6 +651,21 @@ static void fingerprint_input_report(struct fp_data* fingerprint, int key)
     input_sync(fingerprint->input_dev);
     input_report_key(fingerprint->input_dev, key, 0);
     input_sync(fingerprint->input_dev);
+#if FP2WAKE
+    if( (fp2w_switch == 1) && (fp_LCD_POWEROFF == atomic_read(&fingerprint->state)) ) {
+        if( key == EVENT_HOLD ) {
+#if FP2WAKEDEBUG
+	    pr_info("FPDEBUG - Executing fingerprint_input_repor, hold key detectedt\n");
+#endif
+            fingerprint2wake_pwrtrigger();
+        }
+    }
+#if FP2WAKEDEBUG
+    else {
+	pr_info("FPDEBUG - Executing fingerprint_input_report, fp2w_switch: %d, fp_state: %d, key: %d\n", fp2w_switch, atomic_read(&fingerprint->state), key);
+    }
+#endif
+#endif
 }
 
 static int fingerprint_open(struct inode* inode, struct file* file)
@@ -1106,10 +1165,67 @@ static struct spi_driver fingerprint_driver =
     .remove = fingerprint_remove
 };
 
+#if FP2WAKE
+struct kobject *android_touch_kfpobj;
+
+EXPORT_SYMBOL_GPL(android_touch_kfpobj);
+
+static ssize_t fp2w_fingerprint2wake_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+
+	size_t count = 0;
+	count += sprintf(buf, "%d\n", fp2w_switch);
+	return count;
+}
+
+static ssize_t fp2w_fingerprint2wake_dump(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
+{
+	if (buf[0] >= '0' && buf[0] <= '2' && buf[1] == '\n')
+                if (fp2w_switch != buf[0] - '0')
+		        fp2w_switch = buf[0] - '0';
+
+	return count;
+}
+
+static DEVICE_ATTR(fingerprint2wake, 0644, fp2w_fingerprint2wake_show, fp2w_fingerprint2wake_dump);
+#endif
+
 static int __init fingerprint_init(void)
 {
+    int rc = 0;
+
     if (spi_register_driver(&fingerprint_driver))
         return -EINVAL;
+
+#if FP2WAKE
+    fingerprint2wake_pwrdev = input_allocate_device();
+    if (!fingerprint2wake_pwrdev) {
+        pr_err("Can't allocate suspend autotest power button\n");
+        spi_unregister_driver(&fingerprint_driver);
+        return -EINVAL;
+    }
+    input_set_capability(fingerprint2wake_pwrdev, EV_KEY, KEY_POWER);
+    fingerprint2wake_pwrdev->name = "fp2w_pwrkey";
+    fingerprint2wake_pwrdev->phys = "fp2w_pwrkey/input0";
+
+    rc = input_register_device(fingerprint2wake_pwrdev);
+    if (rc) {
+	pr_err("%s: input_register_device err=%d\n", __func__, rc);
+	input_free_device(fingerprint2wake_pwrdev);
+	spi_unregister_driver(&fingerprint_driver);
+        return -EINVAL;
+    }
+    android_touch_kfpobj = kobject_create_and_add("android_touch", NULL) ;
+    if (android_touch_kfpobj == NULL) {
+	pr_warn("%s: android_touch_kobj create_and_add failed\n", __func__);
+    }
+    else {
+        rc = sysfs_create_file(android_touch_kfpobj, &dev_attr_fingerprint2wake.attr);
+        if (rc) {
+            pr_warn("%s: sysfs_create_file failed for doublewave2wake\n", __func__);
+        }
+    }
+#endif
 
     return 0;
 }
@@ -1117,7 +1233,13 @@ static int __init fingerprint_init(void)
 static void __exit fingerprint_exit(void)
 {
     fpc_log_info("Enter!\n");
+#if FP2WAKE
+    kobject_del(android_touch_kfpobj);
+    input_unregister_device(fingerprint2wake_pwrdev);
+    input_free_device(fingerprint2wake_pwrdev);
+#endif
     spi_unregister_driver(&fingerprint_driver);
+    
 }
 
 module_init(fingerprint_init);

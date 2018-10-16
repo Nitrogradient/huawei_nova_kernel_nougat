@@ -37,6 +37,7 @@
 #include "mdss_smmu.h"
 #include "mdss_mdp_wfd.h"
 #include "mdss_dsi_clk.h"
+#include "mdss_mdp_kcal_ctrl.h"
 
 #define VSYNC_PERIOD 16
 #define BORDERFILL_NDX	0x0BF000BF
@@ -4113,8 +4114,14 @@ static int mdss_mdp_pp_ioctl(struct msm_fb_data_type *mfd,
 		break;
 
 	case mdp_op_pcc_cfg:
-		ret = mdss_mdp_pcc_config(mfd, &mdp_pp.data.pcc_cfg_data,
-					&copyback);
+		ret = mdp_pp_lut_set_external(&mdp_pp.data.pcc_cfg_data);
+		if (ret == 1) {
+			ret = mdss_mdp_pcc_config(mfd, &mdp_pp.data.pcc_cfg_data,
+						&copyback);
+		}
+		else {
+			copyback = 0;
+		}
 		break;
 
 	case mdp_op_lut_cfg:
