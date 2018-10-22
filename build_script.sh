@@ -1,8 +1,7 @@
 #!/bin/sh
 
-export CROSS_COMPILE=$PWD/prebuilts/gcc/linux-x86/aarch64/gcc-linaro-5.4.1-2017.05-x86_64_aarch64-linux-gnu/bin/aarch64-linux-gnu-
-export PATH=$PATH:$PWD/prebuilts/gcc/linux-x86/aarch64/gcc-linaro-5.4.1-2017.05-x86_64_aarch64-linux-gnu/bin
-
+export CROSS_COMPILE=$PWD/prebuilts/gcc/linux-x86/aarch64/gcc-linaro-5.5.0-2017.10-x86_64_aarch64-linux-gnu/bin/aarch64-linux-gnu-
+export PATH=$PATH:$PWD/prebuilts/gcc/linux-x86/aarch64/gcc-linaro-5.5.0-2017.10-x86_64_aarch64-linux-gnu/bin
 cd kernel
 if [ -d out ]; then
   echo "---------------------------------------------------"

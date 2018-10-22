@@ -356,6 +356,12 @@ struct msm_fb_data_type {
 #endif
 #endif
 
+	struct mutex bkl_on_lock;
+	struct delayed_work bkl_on_dwork;
+	int c_bl_level;
+	int w_bl_level;
+	int t_bl_level;
+
 	int fb_mmap_type;
 	struct led_trigger *boot_notification_led;
 

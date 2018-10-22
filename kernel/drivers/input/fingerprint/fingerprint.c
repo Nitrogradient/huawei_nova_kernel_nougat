@@ -645,6 +645,10 @@ static int fingerprint_key_remap(const struct fp_data* fingerprint, int key)
 
 static void fingerprint_input_report(struct fp_data* fingerprint, int key)
 {
+#if FP2WAKEDEBUG
+    pr_info("andrei - fingerprint_input_report, entering");
+#endif
+
     key = fingerprint_key_remap(fingerprint, key);
     fpc_log_info("key = %d\n", key);
     input_report_key(fingerprint->input_dev, key, 1);
@@ -653,7 +657,7 @@ static void fingerprint_input_report(struct fp_data* fingerprint, int key)
     input_sync(fingerprint->input_dev);
 #if FP2WAKE
     if( (fp2w_switch == 1) && (fp_LCD_POWEROFF == atomic_read(&fingerprint->state)) ) {
-        if( key == EVENT_HOLD ) {
+        if( key == EVENT_HOLD || key >= EVENT_UP  ) {
 #if FP2WAKEDEBUG
 	    pr_info("FPDEBUG - Executing fingerprint_input_repor, hold key detectedt\n");
 #endif
@@ -696,8 +700,16 @@ static long fingerprint_ioctl(struct file* file, unsigned int cmd, unsigned long
     unsigned int sensor_id;
     fingerprint = (struct fp_data*)file->private_data;
 
+#if FP2WAKEDEBUG
+	pr_info("andrei - fingerprint_ioctl, entering");
+#endif
+
     if (_IOC_TYPE(cmd) != FP_IOC_MAGIC)
     { return -ENOTTY; }
+
+#if FP2WAKEDEBUG
+	pr_info("andrei - fingerprint_ioctl, cmd: %d\n", cmd);
+#endif
 
     switch (cmd)
     {
@@ -743,6 +755,10 @@ static long fingerprint_ioctl(struct file* file, unsigned int cmd, unsigned long
                 fpc_log_err("copy_from_user failed");
                 return -EFAULT;
             }
+
+#if FP2WAKEDEBUG
+	    pr_info("andrei - fingerprint, key=%d\n", key);
+#endif
 
             if (key == 1)
             {
