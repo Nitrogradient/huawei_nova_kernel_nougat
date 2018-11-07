@@ -234,15 +234,22 @@ static void mdss_mdp_kcal_update_pcc(struct kcal_lut_data *lut_data, bool from_e
 
 	pcc_config.version = mdp_pcc_v1_7;
 	pcc_config.block = MDP_LOGICAL_BLOCK_DISP_0;
-	pcc_config.ops = (lut_data->enable || from_external) ?  MDP_PP_OPS_WRITE |MDP_PP_OPS_ENABLE :  MDP_PP_OPS_WRITE |MDP_PP_OPS_DISABLE;
+	pcc_config.ops = (lut_data->enable || from_external) ? MDP_PP_OPS_WRITE |MDP_PP_OPS_ENABLE :  MDP_PP_OPS_WRITE |MDP_PP_OPS_DISABLE;
 	mutex_lock(&pa_cfg_data->lock);
 	if( from_external ) {
 #if DEBUG_KCAL
 		pr_info("KCALDebug - mdss_mdp_kcal_update_pcc, external, r=%d, g=%d, b=%d\n", pa_cfg_data->red, pa_cfg_data->green, pa_cfg_data->blue);
 #endif
-		pcc_config.r.r = pa_cfg_data->red;
-		pcc_config.g.g = pa_cfg_data->green;
-		pcc_config.b.b = pa_cfg_data->blue;
+		if ((pa_cfg_data->red == 0) || (pa_cfg_data->green == 0) || (pa_cfg_data->blue == 0)) {
+			pcc_config.r.r = PCC_ADJ*DEF_PCC;
+			pcc_config.g.g = PCC_ADJ*DEF_PCC;
+			pcc_config.b.b = PCC_ADJ*DEF_PCC;
+		}
+		else {
+			pcc_config.r.r = pa_cfg_data->red;
+			pcc_config.g.g = pa_cfg_data->green;
+			pcc_config.b.b = pa_cfg_data->blue;
+		}
 	}
 	else {
 		if ((pa_cfg_data->red == 0) || (pa_cfg_data->green == 0) || (pa_cfg_data->blue == 0)) {
@@ -306,7 +313,7 @@ static void mdss_mdp_kcal_update_pa(struct kcal_lut_data *lut_data, bool default
 		memset(&pa_config, 0, sizeof(struct mdp_pa_cfg_data));
 
 		pa_config.block = MDP_LOGICAL_BLOCK_DISP_0;
-		pa_config.pa_data.flags = lut_data->enable ?  MDP_PP_OPS_WRITE | MDP_PP_OPS_ENABLE :  MDP_PP_OPS_WRITE | MDP_PP_OPS_DISABLE;
+		pa_config.pa_data.flags = lut_data->enable ? MDP_PP_OPS_WRITE | MDP_PP_OPS_ENABLE :  MDP_PP_OPS_WRITE | MDP_PP_OPS_DISABLE;
 		if( default_val ) {
 #if DEBUG_KCAL
 			pr_info("KCALDebug - mdss_mdp_kcal_update_pa, external\n");
@@ -329,9 +336,7 @@ static void mdss_mdp_kcal_update_pa(struct kcal_lut_data *lut_data, bool default
 		
 		pa_v2_config.version = mdp_pa_v1_7;
 		pa_v2_config.block = MDP_LOGICAL_BLOCK_DISP_0;
-		pa_v2_config.pa_v2_data.flags = lut_data->enable ?
-			MDP_PP_OPS_WRITE | MDP_PP_OPS_ENABLE :
-				MDP_PP_OPS_WRITE | MDP_PP_OPS_DISABLE;
+		pa_v2_config.pa_v2_data.flags = lut_data->enable ? MDP_PP_OPS_WRITE | MDP_PP_OPS_ENABLE : MDP_PP_OPS_WRITE | MDP_PP_OPS_DISABLE;
 		pa_v2_config.pa_v2_data.flags |= MDP_PP_PA_HUE_ENABLE;
 		pa_v2_config.pa_v2_data.flags |= MDP_PP_PA_HUE_MASK;
 		pa_v2_config.pa_v2_data.flags |= MDP_PP_PA_SAT_ENABLE;
