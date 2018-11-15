@@ -207,7 +207,6 @@ static void __ref hotplug_work_fn(struct work_struct *work)
 	online_cpus = cpumask_weight(cpus);
 
 #if DEBUG_ALUCARD
-	cacamaca
         pr_info("DBG_ALUCARD, hotplug_work_fn entering, online_cpus: %u\n", online_cpus);
 #endif
 
