@@ -297,8 +297,8 @@ CONFIG_SHELL := $(shell if [ -x "$$BASH" ]; then echo $$BASH; \
 
 HOSTCC       = gcc
 HOSTCXX      = g++
-HOSTCFLAGS   = -Wall -Wmissing-prototypes -Wstrict-prototypes -O2 -fomit-frame-pointer -std=gnu89
-HOSTCXXFLAGS = -O2
+HOSTCFLAGS   = -Wall -Wmissing-prototypes -Wstrict-prototypes -O3 -fomit-frame-pointer -std=gnu89
+HOSTCXXFLAGS = -O3
 
 ifeq ($(shell $(HOSTCC) -v 2>&1 | grep -c "clang version"), 1)
 HOSTCFLAGS  += -Wno-unused-value -Wno-unused-parameter \
@@ -377,10 +377,10 @@ CHECKFLAGS     := -D__linux__ -Dlinux -D__STDC__ -Dunix -D__unix__ \
 		  -Wbitwise -Wno-return-void $(CF)
 CFLAGS_MODULE   =
 AFLAGS_MODULE   =
-LDFLAGS_MODULE  =
+LDFLAGS_MODULE  = --strip-debug
 CFLAGS_KERNEL	=
 AFLAGS_KERNEL	=
-CFLAGS_GCOV	= -fprofile-arcs -ftest-coverage
+CFLAGS_GCOV	= -fprofile-arcs -ftest-coverage -fno-tree-loop-im
 
 # Define macro to control the high low temperature compile
 ifeq ($(HLTHERM_RUNTEST),true)
@@ -415,13 +415,24 @@ KBUILD_CFLAGS   := -Wall -Wundef -Wstrict-prototypes -Wno-trigraphs \
 		   -fno-strict-aliasing -fno-common \
 		   -Werror-implicit-function-declaration \
 		   -Wno-format-security \
-		   -std=gnu89
+		   -Wno-bool-compare -Wno-logical-not-parentheses -Wno-incompatible-pointer-types \
+		   -Wno-format -fno-modulo-sched \
+		   -Wno-parentheses \
+		   -Wno-sizeof-pointer-memaccess \
+		   --param l1-cache-size=32 \
+		   --param l2-cache-size=2048 \
+		   --param l1-cache-line-size=64 \
+		   -std=gnu89 \
+		   -fno-asynchronous-unwind-tables \
+		   -mcpu=cortex-a53 -mtune=cortex-a53 -march=armv8-a+crc+crypto -mcpu=cortex-a53+crc+crypto \
 
+# Optimizations
+KBUILD_CFLAGS	+= -pipe -fno-pic -O3 -g0 -fivopts -finline-functions
 KBUILD_AFLAGS_KERNEL :=
 KBUILD_CFLAGS_KERNEL :=
 KBUILD_AFLAGS   := -D__ASSEMBLY__
 KBUILD_AFLAGS_MODULE  := -DMODULE
-KBUILD_CFLAGS_MODULE  := -DMODULE
+KBUILD_CFLAGS_MODULE  := -DMODULE -fno-pic
 KBUILD_LDFLAGS_MODULE := -T $(srctree)/scripts/module-common.lds
 
 # Read KERNELRELEASE from include/config/kernel.release (if it exists)
@@ -622,12 +633,22 @@ all: vmlinux
 
 include $(srctree)/arch/$(SRCARCH)/Makefile
 
+KBUILD_CFLAGS	+= $(call cc-disable-warning, duplicate-decl-specifier)
+KBUILD_CFLAGS	+= $(call cc-disable-warning,unused-variable,)
+KBUILD_CFLAGS	+= $(call cc-disable-warning,unused-function)
 KBUILD_CFLAGS	+= $(call cc-option,-fno-delete-null-pointer-checks,)
+KBUILD_CFLAGS	+= $(call cc-disable-warning,frame-address,)
+KBUILD_CFLAGS	+= $(call cc-disable-warning, format-truncation)
+KBUILD_CFLAGS	+= $(call cc-disable-warning, format-overflow)
+KBUILD_CFLAGS	+= $(call cc-disable-warning, int-in-bool-context)
+KBUILD_CFLAGS	+= $(call cc-disable-warning, attribute-alias)
+KBUILD_CFLAGS	+= $(call cc-option,-fno-PIE)
+KBUILD_AFLAGS	+= $(call cc-option,-fno-PIE)
 
 ifdef CONFIG_CC_OPTIMIZE_FOR_SIZE
 KBUILD_CFLAGS	+= -Os $(call cc-disable-warning,maybe-uninitialized,)
 else
-KBUILD_CFLAGS	+= -O2
+KBUILD_CFLAGS	+= -O3
 endif
 
 # Tell gcc to never replace conditional load with a non-conditional one
@@ -702,6 +723,7 @@ else
 # This warning generated too much noise in a regular build.
 # Use make W=1 to enable this warning (see scripts/Makefile.build)
 KBUILD_CFLAGS += $(call cc-disable-warning, unused-but-set-variable)
+KBUILD_CFLAGS += $(call cc-disable-warning, unused-const-variable)
 endif
 
 ifdef CONFIG_FRAME_POINTER
@@ -767,6 +789,9 @@ KBUILD_CFLAGS += $(call cc-disable-warning, pointer-sign)
 
 # disable invalid "can't wrap" optimizations for signed / pointers
 KBUILD_CFLAGS	+= $(call cc-option,-fno-strict-overflow)
+
+# Make sure -fstack-check isn't enabled (like gentoo apparently did)
+KBUILD_CFLAGS  += $(call cc-option,-fno-stack-check,)
 
 # conserve stack if available
 KBUILD_CFLAGS   += $(call cc-option,-fconserve-stack)
