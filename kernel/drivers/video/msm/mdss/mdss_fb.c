@@ -50,6 +50,7 @@
 #include <linux/dma-buf.h>
 #include "mdss_fb.h"
 #include "mdss_mdp_splash_logo.h"
+#include "mdss_mdp_kcal_ctrl.h"
 #ifndef CONFIG_LCDKIT_DRIVER
 #ifdef CONFIG_LOG_JANK
 #include <huawei_platform/log/log_jank.h>
@@ -346,6 +347,7 @@ static void mdss_fb_set_bl_brightness(struct led_classdev *led_cdev,
 {
 	struct msm_fb_data_type *mfd = dev_get_drvdata(led_cdev->dev->parent);
 	int bl_lvl;
+	int adjust = atomic_read(&gkmin);
 
 	if (value == 0) {
 		if (mfd->boot_notification_led) {
@@ -378,15 +380,17 @@ static void mdss_fb_set_bl_brightness(struct led_classdev *led_cdev,
 		if (mfd->c_bl_level == 0) {
 			/* This maps android backlight level 0 to 255 into
  	   		driver backlight level 0 to bl_max with rounding */
+			MDSS_BRIGHT_TO_DIM(value, value, adjust, mfd->panel_info->bl_min, mfd->panel_info->bl_max);
 			MDSS_BRIGHT_TO_BL(bl_lvl, value, mfd->panel_info->bl_max,
 					mfd->panel_info->brightness_max);
 			mfd->w_bl_level = bl_lvl;
 			mutex_unlock(&mfd->bkl_on_lock);
-			schedule_delayed_work(&mfd->bkl_on_dwork, msecs_to_jiffies(480));
+			schedule_delayed_work(&mfd->bkl_on_dwork, msecs_to_jiffies(320));
 		}
 		else if (mfd->t_bl_level != 0) {
 			/* This maps android backlight level 0 to 255 into
  	   		driver backlight level 0 to bl_max with rounding */
+			MDSS_BRIGHT_TO_DIM(value, value, adjust, mfd->panel_info->bl_min, mfd->panel_info->bl_max);
 			MDSS_BRIGHT_TO_BL(bl_lvl, value, mfd->panel_info->bl_max,
 					mfd->panel_info->brightness_max);
 			mfd->w_bl_level = bl_lvl;
@@ -405,6 +409,7 @@ static void mdss_fb_set_bl_brightness(struct led_classdev *led_cdev,
 				value = mfd->panel_info->brightness_max;
 			/* This maps android backlight level 0 to 255 into
 	   		driver backlight level 0 to bl_max with rounding */
+			MDSS_BRIGHT_TO_DIM(value, value, adjust, mfd->panel_info->bl_min, mfd->panel_info->bl_max);
 			MDSS_BRIGHT_TO_BL(bl_lvl, value, mfd->panel_info->bl_max,
 					mfd->panel_info->brightness_max);
 			if (!bl_lvl && value)
