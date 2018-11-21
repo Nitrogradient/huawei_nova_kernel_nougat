@@ -103,6 +103,39 @@ static ssize_t result_store(struct device* device,
 
 static DEVICE_ATTR(result, S_IRUSR | S_IWUSR, result_show, result_store);
 
+int fingerprint_gpio_reset(struct fp_data* fingerprint)
+{
+    int error = 0;
+    int counter = FP_RESET_RETRIES;
+
+    fpc_log_info("Enter!\n");
+
+    while (counter)
+    {
+        counter--;
+
+        gpio_set_value(fingerprint->rst_gpio, 1);
+        udelay(FP_RESET_HIGH1_US);
+
+        gpio_set_value(fingerprint->rst_gpio, 0);
+        udelay(FP_RESET_LOW_US);
+
+        gpio_set_value(fingerprint->rst_gpio, 1);
+        udelay(FP_RESET_HIGH2_US);
+
+        error = gpio_get_value(fingerprint->irq_gpio) ? 0 : -EIO;
+        if (!error)
+        {
+            counter = 0;
+        }
+        else
+        {
+            fpc_log_err("irq expected high, got low, retrying ...\n");
+        }
+    }
+    return error;
+}
+
 /**
  * sysf node to check the interrupt status of the sensor, the interrupt
  * handler should perform sysf_notify to allow userland to poll the node.
@@ -114,9 +147,13 @@ static ssize_t irq_get(struct device* device,
     struct fp_data* fingerprint = dev_get_drvdata(device);
     int irq = gpio_get_value(fingerprint->irq_gpio);
 
-    if ((1 == irq) && (fp_LCD_POWEROFF == atomic_read(&fingerprint->state)))
-    {
-       adreno_force_waking_gpu();
+    if (fp_LCD_POWEROFF == atomic_read(&fingerprint->state)) {
+	if (1 == irq) {
+		adreno_force_waking_gpu();
+	}
+	else if (fp2w_switch == 1) {
+		fingerprint_gpio_reset(fingerprint);
+	}
     }
 
     return scnprintf(buffer, PAGE_SIZE, "%i\n", irq);
@@ -377,39 +414,6 @@ int fingerprint_get_dts_data(struct device *dev, struct fp_data *fingerprint)
     return 0;
 }
 
-int fingerprint_gpio_reset(struct fp_data* fingerprint)
-{
-    int error = 0;
-    int counter = FP_RESET_RETRIES;
-
-    fpc_log_info("Enter!\n");
-
-    while (counter)
-    {
-        counter--;
-
-        gpio_set_value(fingerprint->rst_gpio, 1);
-        udelay(FP_RESET_HIGH1_US);
-
-        gpio_set_value(fingerprint->rst_gpio, 0);
-        udelay(FP_RESET_LOW_US);
-
-        gpio_set_value(fingerprint->rst_gpio, 1);
-        udelay(FP_RESET_HIGH2_US);
-
-        error = gpio_get_value(fingerprint->irq_gpio) ? 0 : -EIO;
-        if (!error)
-        {
-            counter = 0;
-        }
-        else
-        {
-            fpc_log_err("irq expected high, got low, retrying ...\n");
-        }
-    }
-    return error;
-}
-
 static int fingerprint_reset_init(struct fp_data* fingerprint)
 {
     int error = 0;
@@ -657,7 +661,7 @@ static void fingerprint_input_report(struct fp_data* fingerprint, int key)
     input_sync(fingerprint->input_dev);
 #if FP2WAKE
     if( (fp2w_switch == 1) && (fp_LCD_POWEROFF == atomic_read(&fingerprint->state)) ) {
-        if( key == EVENT_HOLD || key >= EVENT_UP  ) {
+        if (key == EVENT_HOLD) {
 #if FP2WAKEDEBUG
 	    pr_info("FPDEBUG - Executing fingerprint_input_repor, hold key detectedt\n");
 #endif
