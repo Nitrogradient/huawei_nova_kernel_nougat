@@ -499,16 +499,16 @@ module_param_named(
 	int, S_IRUSR | S_IWUSR
 );
 
-static int smbchg_default_hvdcp3_icl_ma = 3000;
+static int smbchg_default_hvdcp3_icl_ma = 2000;
 module_param_named(
 	default_hvdcp3_icl_ma, smbchg_default_hvdcp3_icl_ma,
 	int, S_IRUSR | S_IWUSR
 );
 
-static int smbchg_default_dcp_icl_ma = 1800;
+static int smbchg_default_dcp_icl_ma = 1500;
 module_param_named(
 	default_dcp_icl_ma, smbchg_default_dcp_icl_ma,
-	int, S_IRUSR | S_IWUSR
+	int, 0644
 );
 
 static int wipower_dyn_icl_en;
@@ -2354,6 +2354,8 @@ static void smbchg_parallel_usb_enable(struct smbchg_chip *chip,
 			"Couldn't set Vflt on parallel psy rc: %d\n", rc);
 		return;
 	}
+	power_supply_set_voltage_limit(chip->usb_psy,
+			(chip->vfloat_mv + 50) * 1000);
 	/* Set USB ICL */
 	target_icl_ma = get_effective_result_locked(chip->usb_icl_votable);
 	new_parallel_cl_ma = total_current_ma
@@ -3300,8 +3302,11 @@ static int smbchg_float_voltage_set(struct smbchg_chip *chip, int vfloat_mv)
 
 	if (rc)
 		dev_err(chip->dev, "Couldn't set float voltage rc = %d\n", rc);
-	else
+	else {
 		chip->vfloat_mv = vfloat_mv;
+		power_supply_set_voltage_limit(chip->usb_psy,
+				chip->vfloat_mv * 1000);
+	}
 
 	return rc;
 }
@@ -4784,8 +4789,15 @@ static int smbchg_change_usb_supply_type(struct smbchg_chip *chip,
 		current_limit_ma = smbchg_default_hvdcp_icl_ma;
 	else if (type == POWER_SUPPLY_TYPE_USB_HVDCP_3)
 		current_limit_ma = smbchg_default_hvdcp3_icl_ma;
-	else
+	else {
+		if (smbchg_default_dcp_icl_ma > 1800) {
+			smbchg_default_dcp_icl_ma = 1800;
+		}
+		else if (smbchg_default_dcp_icl_ma < 900) {
+			smbchg_default_dcp_icl_ma = 900;
+		}
 		current_limit_ma = smbchg_default_dcp_icl_ma;
+	}
 
 	pr_smb(PR_STATUS, "Type %d: setting mA = %d\n",
 		type, current_limit_ma);
