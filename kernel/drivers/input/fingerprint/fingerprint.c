@@ -661,7 +661,7 @@ static void fingerprint_input_report(struct fp_data* fingerprint, int key)
     input_sync(fingerprint->input_dev);
 #if FP2WAKE
     if( (fp2w_switch == 1) && (fp_LCD_POWEROFF == atomic_read(&fingerprint->state)) ) {
-        if (key == EVENT_HOLD) {
+        if (key == EVENT_HOLD || key == EVENT_DCLICK) {
 #if FP2WAKEDEBUG
 	    pr_info("FPDEBUG - Executing fingerprint_input_repor, hold key detectedt\n");
 #endif
