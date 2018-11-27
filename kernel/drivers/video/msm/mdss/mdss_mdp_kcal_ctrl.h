@@ -23,7 +23,7 @@
 
 #define DEBUG_KCAL				0
 
-extern atomic_t gkmin;
+extern int get_adjust_value(void);
 
 extern int mdp_pp_lut_set_external(struct mdp_pcc_cfg_data *config);
 

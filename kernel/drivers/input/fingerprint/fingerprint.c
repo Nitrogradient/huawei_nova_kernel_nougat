@@ -24,15 +24,17 @@
 #endif
 
 #define FP2WAKE 1
-#define FP2WAKEDEBUG 0
+#define FP2WAKEDEBUG 1
 
 #if FP2WAKE
 #define FP2W_DEFAULT			1
 #define FP2W_PWRKEY_DUR		60
 #define DEFAULT_VIBR_TIME		32
+#define FP2W_PWRKEY_REARM		1536
 
 static struct input_dev * fingerprint2wake_pwrdev;
 int fp2w_switch = FP2W_DEFAULT;
+static bool pwrup_working = false;
 
 static DEFINE_MUTEX(pwrkeyworklock);
 
@@ -52,14 +54,19 @@ static void fingerprint2wake_presspwr(struct work_struct * fingerprint2wake_pres
 	msleep(FP2W_PWRKEY_DUR);
         mutex_unlock(&pwrkeyworklock);
 	qpnp_hap_td_enable_external(DEFAULT_VIBR_TIME);
+	msleep(FP2W_PWRKEY_REARM);
+	pwrup_working = false;
 	return;
 }
 
 static DECLARE_WORK(fingerprint2wake_presspwr_work, fingerprint2wake_presspwr);
 
-static void fingerprint2wake_pwrtrigger(void) {
+static void fingerprint2wake_pwrtrigger(struct fp_data* fingerprint) {
 
-	schedule_work(&fingerprint2wake_presspwr_work);
+	if (!pwrup_working && (fp_LCD_POWEROFF == atomic_read(&fingerprint->state))) {
+		pwrup_working = true;
+		schedule_work(&fingerprint2wake_presspwr_work);
+	}
         return;
 }
 #endif
@@ -136,6 +143,26 @@ int fingerprint_gpio_reset(struct fp_data* fingerprint)
     return error;
 }
 
+static void fingerprint_gpio_reset_delayed_work(struct work_struct *work)
+{
+	struct fp_data* fingerprint = container_of((struct delayed_work *)work, struct fp_data, fp_reset_dwork);
+
+#if FP2WAKEDEBUG
+	pr_info("FPDEBUG - Executing fingerprint_gpio_reset_delayed_work\n");
+#endif
+
+	mutex_lock(&fingerprint->lock);
+	if (fingerprint->irq_enabled) {
+		disable_irq(gpio_to_irq(fingerprint->irq_gpio ));
+	}
+	fingerprint_gpio_reset(fingerprint);
+	if (fingerprint->irq_enabled) {
+		enable_irq(gpio_to_irq(fingerprint->irq_gpio ));
+	}
+	mutex_unlock(&fingerprint->lock);
+}
+
+
 /**
  * sysf node to check the interrupt status of the sensor, the interrupt
  * handler should perform sysf_notify to allow userland to poll the node.
@@ -150,9 +177,17 @@ static ssize_t irq_get(struct device* device,
     if (fp_LCD_POWEROFF == atomic_read(&fingerprint->state)) {
 	if (1 == irq) {
 		adreno_force_waking_gpu();
-	}
-	else if (fp2w_switch == 1) {
-		fingerprint_gpio_reset(fingerprint);
+#if FP2WAKEDEBUG
+		pr_info("FPDEBUG - Executing irq_get, adreno wakeup\n");
+#endif
+		if (fp2w_switch == 1) {
+#if FP2WAKEDEBUG
+			pr_info("FPDEBUG - Executing irq_get, scheduling reset\n");
+#endif
+			wake_lock_timeout(&fingerprint->ttw_wl, msecs_to_jiffies(2*FPC_TTW_HOLD_TIME));
+			cancel_delayed_work_sync(&fingerprint->fp_reset_dwork);
+			schedule_delayed_work(&fingerprint->fp_reset_dwork, msecs_to_jiffies(FP2W_PWRKEY_REARM));
+		}
 	}
     }
 
@@ -650,8 +685,10 @@ static int fingerprint_key_remap(const struct fp_data* fingerprint, int key)
 static void fingerprint_input_report(struct fp_data* fingerprint, int key)
 {
 #if FP2WAKEDEBUG
-    pr_info("andrei - fingerprint_input_report, entering");
+    pr_info("FPDEBUG - fingerprint_input_report, entering\n");
 #endif
+
+    cancel_delayed_work_sync(&fingerprint->fp_reset_dwork);
 
     key = fingerprint_key_remap(fingerprint, key);
     fpc_log_info("key = %d\n", key);
@@ -663,9 +700,9 @@ static void fingerprint_input_report(struct fp_data* fingerprint, int key)
     if( (fp2w_switch == 1) && (fp_LCD_POWEROFF == atomic_read(&fingerprint->state)) ) {
         if (key == EVENT_HOLD || key == EVENT_DCLICK) {
 #if FP2WAKEDEBUG
-	    pr_info("FPDEBUG - Executing fingerprint_input_repor, hold key detectedt\n");
+	    pr_info("FPDEBUG - Executing fingerprint_input_repor, key detected for wakeup: %d\n", key);
 #endif
-            fingerprint2wake_pwrtrigger();
+            fingerprint2wake_pwrtrigger(fingerprint);
         }
     }
 #if FP2WAKEDEBUG
@@ -705,29 +742,44 @@ static long fingerprint_ioctl(struct file* file, unsigned int cmd, unsigned long
     fingerprint = (struct fp_data*)file->private_data;
 
 #if FP2WAKEDEBUG
-	pr_info("andrei - fingerprint_ioctl, entering");
+	pr_info("FPDEBUG - fingerprint_ioctl, entering\n");
 #endif
 
     if (_IOC_TYPE(cmd) != FP_IOC_MAGIC)
     { return -ENOTTY; }
 
 #if FP2WAKEDEBUG
-	pr_info("andrei - fingerprint_ioctl, cmd: %d\n", cmd);
+	pr_info("FPDEBUG - fingerprint_ioctl, cmd: %d\n", cmd);
 #endif
 
     switch (cmd)
     {
         case FP_IOC_CMD_ENABLE_IRQ:
             fpc_log_info("FP_IOC_CMD_ENABLE_IRQ\n");
+#if FP2WAKEDEBUG
+	    pr_info("FPDEBUG - Executing fingerprint_ioctl, FP_IOC_CMD_ENABLE_IRQ\n");
+#endif
+	    mutex_lock(&fingerprint->lock);
+	    fingerprint->irq_enabled = true;
             enable_irq(gpio_to_irq(fingerprint->irq_gpio ));
+	    mutex_unlock(&fingerprint->lock);
             break;
 
         case FP_IOC_CMD_DISABLE_IRQ:
+#if FP2WAKEDEBUG
+	    pr_info("FPDEBUG - Executing fingerprint_ioctl, FP_IOC_CMD_DISABLE_IRQ\n");
+#endif
             fpc_log_info("FP_IOC_CMD_DISABLE_IRQ\n");
+	    mutex_lock(&fingerprint->lock);
+	    fingerprint->irq_enabled = false;
             disable_irq(gpio_to_irq(fingerprint->irq_gpio ));
+	    mutex_unlock(&fingerprint->lock);
             break;
 
         case FP_IOC_CMD_SEND_UEVENT:
+#if FP2WAKEDEBUG
+	    pr_info("FPDEBUG - Executing fingerprint_ioctl, FP_IOC_CMD_SEND_UEVENT\n");
+#endif
             if (copy_from_user(&key, argp, sizeof(key)))
             {
                 fpc_log_err("copy_from_user failed");
@@ -742,6 +794,10 @@ static long fingerprint_ioctl(struct file* file, unsigned int cmd, unsigned long
 
             status = fingerprint_get_irq_status(fingerprint);
 
+#if FP2WAKEDEBUG
+	    pr_info("FPDEBUG - Executing fingerprint_ioctl, FP_IOC_CMD_GET_IRQ_STATUS, status: %d\n", status);
+#endif
+
             error = copy_to_user(argp, &status, sizeof(status));
 
             if (error)
@@ -754,6 +810,10 @@ static long fingerprint_ioctl(struct file* file, unsigned int cmd, unsigned long
             break;
 
         case FP_IOC_CMD_SET_WAKELOCK_STATUS:
+
+#if FP2WAKEDEBUG
+	    pr_info("FPDEBUG - Executing fingerprint_ioctl, FP_IOC_CMD_SET_WAKELOCK_STATUS\n");
+#endif
             if (copy_from_user(&key, argp, sizeof(key)))
             {
                 fpc_log_err("copy_from_user failed");
@@ -761,7 +821,7 @@ static long fingerprint_ioctl(struct file* file, unsigned int cmd, unsigned long
             }
 
 #if FP2WAKEDEBUG
-	    pr_info("andrei - fingerprint, key=%d\n", key);
+	    pr_info("FPDEBUG - fingerprint, key=%d\n", key);
 #endif
 
             if (key == 1)
@@ -778,6 +838,9 @@ static long fingerprint_ioctl(struct file* file, unsigned int cmd, unsigned long
             break;
 
         case FP_IOC_CMD_SEND_SENSORID:
+#if FP2WAKEDEBUG
+	    pr_info("FPDEBUG - Executing fingerprint_ioctl, FP_IOC_CMD_SEND_SENSORID\n");
+#endif
             if (copy_from_user(&sensor_id, argp, sizeof(sensor_id)))
             {
                 fpc_log_err("copy_from_user failed\n");
@@ -932,6 +995,8 @@ static int fingerprint_probe(struct spi_device* spi)
     struct device_node* np = dev->of_node;
     struct fp_data* fingerprint = devm_kzalloc(dev, sizeof(*fingerprint), GFP_KERNEL);
 
+    pwrup_working = false;
+
     if (!fingerprint)
     {
         fpc_log_err("failed to allocate memory for struct fp_data\n");
@@ -1052,6 +1117,10 @@ static int fingerprint_probe(struct spi_device* spi)
     }
 
     fingerprint->wakeup_enabled = false;
+
+    INIT_DELAYED_WORK(&fingerprint->fp_reset_dwork, fingerprint_gpio_reset_delayed_work);
+
+    fingerprint->irq_enabled = false;
 
     fingerprint->pf_dev= platform_device_alloc(FP_DEV_NAME, -1);
     if (!fingerprint->pf_dev)

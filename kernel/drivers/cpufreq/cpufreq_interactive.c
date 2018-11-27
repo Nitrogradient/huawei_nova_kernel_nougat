@@ -32,8 +32,6 @@
 #include <linux/kthread.h>
 #include <linux/slab.h>
 
-#define PSDEBUG 1
-
 #ifdef CONFIG_POWERSUSPEND
 #include <linux/powersuspend.h>
 #endif // CONFIG_POWERSUSPEND
@@ -1093,17 +1091,11 @@ show_store_one(enable_prediction);
 #ifdef CONFIG_POWERSUSPEND
 static void gov_early_suspend(struct power_suspend *h)
 {
-#if PSDEBUG
-	pr_info("debug interactive gov, detected screen off");
-#endif
 	display_on = false;
 }
 
 static void gov_late_resume(struct power_suspend *h)
 {
-#if PSDEBUG
-		pr_info("debug interactive gov, detected screen on");
-#endif
 	display_on = true;
 }
 

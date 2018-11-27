@@ -346,8 +346,8 @@ static void mdss_fb_set_bl_brightness(struct led_classdev *led_cdev,
 				      enum led_brightness value)
 {
 	struct msm_fb_data_type *mfd = dev_get_drvdata(led_cdev->dev->parent);
-	int bl_lvl;
-	int adjust = atomic_read(&gkmin);
+	int bl_lvl, adjusted_bl_lvl;
+        int adjust_value = get_adjust_value();
 
 	if (value == 0) {
 		if (mfd->boot_notification_led) {
@@ -380,20 +380,22 @@ static void mdss_fb_set_bl_brightness(struct led_classdev *led_cdev,
 		if (mfd->c_bl_level == 0) {
 			/* This maps android backlight level 0 to 255 into
  	   		driver backlight level 0 to bl_max with rounding */
-			MDSS_BRIGHT_TO_DIM(value, value, adjust, mfd->panel_info->bl_min, mfd->panel_info->bl_max);
 			MDSS_BRIGHT_TO_BL(bl_lvl, value, mfd->panel_info->bl_max,
 					mfd->panel_info->brightness_max);
-			mfd->w_bl_level = bl_lvl;
+			MDSS_BRIGHT_TO_DIM(adjusted_bl_lvl, bl_lvl, adjust_value, 
+                                       32, mfd->panel_info->bl_max);
+			mfd->w_bl_level = adjusted_bl_lvl;
 			mutex_unlock(&mfd->bkl_on_lock);
 			schedule_delayed_work(&mfd->bkl_on_dwork, msecs_to_jiffies(320));
 		}
 		else if (mfd->t_bl_level != 0) {
 			/* This maps android backlight level 0 to 255 into
  	   		driver backlight level 0 to bl_max with rounding */
-			MDSS_BRIGHT_TO_DIM(value, value, adjust, mfd->panel_info->bl_min, mfd->panel_info->bl_max);
 			MDSS_BRIGHT_TO_BL(bl_lvl, value, mfd->panel_info->bl_max,
 					mfd->panel_info->brightness_max);
-			mfd->w_bl_level = bl_lvl;
+			MDSS_BRIGHT_TO_DIM(adjusted_bl_lvl, bl_lvl, adjust_value, 
+                                       32, mfd->panel_info->bl_max);
+			mfd->w_bl_level = adjusted_bl_lvl;
 			// display on is currently scheduled
 			mutex_unlock(&mfd->bkl_on_lock);
 		}
@@ -409,14 +411,15 @@ static void mdss_fb_set_bl_brightness(struct led_classdev *led_cdev,
 				value = mfd->panel_info->brightness_max;
 			/* This maps android backlight level 0 to 255 into
 	   		driver backlight level 0 to bl_max with rounding */
-			MDSS_BRIGHT_TO_DIM(value, value, adjust, mfd->panel_info->bl_min, mfd->panel_info->bl_max);
 			MDSS_BRIGHT_TO_BL(bl_lvl, value, mfd->panel_info->bl_max,
 					mfd->panel_info->brightness_max);
-			if (!bl_lvl && value)
-				bl_lvl = 1;
+			MDSS_BRIGHT_TO_DIM(adjusted_bl_lvl, bl_lvl, adjust_value, 
+                                       32, mfd->panel_info->bl_max);
+			if (!adjusted_bl_lvl && value)
+				adjusted_bl_lvl = 1;
 			mutex_unlock(&mfd->bkl_on_lock);
 			mutex_lock(&mfd->bl_lock);
-			mdss_fb_set_backlight(mfd, bl_lvl);
+			mdss_fb_set_backlight(mfd, adjusted_bl_lvl);
 			mutex_unlock(&mfd->bl_lock);
 		}
 	}

@@ -58,8 +58,6 @@ static struct lutd *kcalld;
 
 static struct external_lutd *pa_cfg_data;
 
-atomic_t gkmin;
-
 static uint32_t igc_Table_Inverted[IGC_LUT_ENTRIES] = {
 	267390960, 266342368, 265293776, 264245184,
 	263196592, 262148000, 261099408, 260050816,
@@ -422,6 +420,22 @@ static void mdss_mdp_kcal_update_igc(struct kcal_lut_data *lut_data)
 	kfree(payload);
 }
 
+int get_adjust_value(void)
+{
+       int val = 0;
+
+       mutex_lock(&kcalld->lock);
+       val = kcalld->lut_data->minimum;
+       mutex_unlock(&kcalld->lock);
+       if (val < 0) {
+               val = 0;
+       }
+       else if (val > 110) {
+               val = 110;
+       }
+       return val;
+}
+
 int mdp_pp_lut_set_external(struct mdp_pcc_cfg_data *config)
 {
 	int ret = 1;
@@ -511,13 +525,6 @@ static ssize_t kcal_min_store(struct device *dev,
 
 	mutex_lock(&kcald->lock);
 	kcald->lut_data->minimum = kcal_min;
-
-	if (kcal_min <= 100) {
-		atomic_set(&gkmin, kcal_min);
-	}
-	else {
-		atomic_set(&gkmin, 100);
-	}
 
 	mdss_mdp_kcal_update_pcc(kcald->lut_data, false);
 	mdss_mdp_kcal_display_commit();
@@ -746,13 +753,14 @@ static int kcal_ctrl_probe(struct platform_device *pdev)
 	kcalld->lut_data->red = DEF_PCC;
 	kcalld->lut_data->green = DEF_PCC;
 	kcalld->lut_data->blue = DEF_PCC;
-	kcalld->lut_data->minimum = 0x0;
+	kcalld->lut_data->minimum = 0x23;
 	kcalld->lut_data->invert = 0x0;
 	kcalld->lut_data->hue = 0x0;
 	kcalld->lut_data->sat = DEF_PA;
 	kcalld->lut_data->val = DEF_PA;
 	kcalld->lut_data->cont = DEF_PA;
-	atomic_set(&gkmin, kcalld->lut_data->minimum);
+
+	mutex_init(&kcalld->lock);
 
 	ret = device_create_file(&pdev->dev, &dev_attr_kcal);
 	ret |= device_create_file(&pdev->dev, &dev_attr_kcal_min);

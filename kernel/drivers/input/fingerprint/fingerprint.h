@@ -101,6 +101,8 @@ struct fp_data
     struct notifier_block fb_notify;
 #endif
     atomic_t state;
+    bool irq_enabled;
+    struct delayed_work fp_reset_dwork;
 };
 
 
