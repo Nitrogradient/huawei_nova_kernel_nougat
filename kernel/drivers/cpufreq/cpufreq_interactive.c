@@ -31,6 +31,7 @@
 #include <linux/workqueue.h>
 #include <linux/kthread.h>
 #include <linux/slab.h>
+#include <linux/touchboost.h>
 
 #ifdef CONFIG_POWERSUSPEND
 #include <linux/powersuspend.h>
@@ -129,6 +130,8 @@ struct cpufreq_interactive_tunables {
 	int nabove_hispeed_delay;
 	/* Non-zero means indefinite speed boost active */
 	int boost_val;
+	/* Non-zero means cpu boost when touchscreen has been pressed */
+	int touchboost_val;
 	/* Duration of a boot pulse in usecs */
 	int boostpulse_duration_val;
 	/* End time of boost pulse in ktime converted to usecs */
@@ -570,7 +573,8 @@ static void cpufreq_interactive_timer(unsigned long data)
 	}
 	spin_unlock(&ppol->load_lock);
 
-	tunables->boosted = tunables->boost_val || now < tunables->boostpulse_endtime;
+	tunables->boosted = (tunables->boost_val || now < tunables->boostpulse_endtime) ||
+                                          (tunables->touchboost_val && (now < (get_input_time() + tunables->boostpulse_duration_val)));
 
 	prev_chfreq = choose_freq(ppol, prev_laf);
 	pred_chfreq = choose_freq(ppol, pred_laf);
@@ -1212,7 +1216,7 @@ static ssize_t show_boost(struct cpufreq_interactive_tunables *tunables,
 static ssize_t store_boost(struct cpufreq_interactive_tunables *tunables,
 			   const char *buf, size_t count)
 {
-/*	int ret;
+	int ret;
 	unsigned long val;
 
 	ret = kstrtoul(buf, 0, &val);
@@ -1229,7 +1233,28 @@ static ssize_t store_boost(struct cpufreq_interactive_tunables *tunables,
 		tunables->boostpulse_endtime = ktime_to_us(ktime_get());
 		trace_cpufreq_interactive_unboost("off");
 	}
-*/
+
+	return count;
+}
+
+static ssize_t show_touchboost(struct cpufreq_interactive_tunables *tunables,
+			  char *buf)
+{
+	return sprintf(buf, "%d\n", tunables->touchboost_val);
+}
+
+static ssize_t store_touchboost(struct cpufreq_interactive_tunables *tunables,
+			   const char *buf, size_t count)
+{
+	int ret;
+	unsigned long val;
+
+	ret = kstrtoul(buf, 0, &val);
+	if (ret < 0)
+		return ret;
+
+	tunables->touchboost_val = val;
+
 	return count;
 }
 
@@ -1535,6 +1560,7 @@ show_store_gov_pol_sys(min_sample_time);
 show_store_gov_pol_sys(timer_rate);
 show_store_gov_pol_sys(timer_slack);
 show_store_gov_pol_sys(boost);
+show_store_gov_pol_sys(touchboost);
 store_gov_pol_sys(boostpulse);
 show_store_gov_pol_sys(boostpulse_duration);
 show_store_gov_pol_sys(io_is_busy);
@@ -1568,6 +1594,7 @@ gov_sys_pol_attr_rw(min_sample_time);
 gov_sys_pol_attr_rw(timer_rate);
 gov_sys_pol_attr_rw(timer_slack);
 gov_sys_pol_attr_rw(boost);
+gov_sys_pol_attr_rw(touchboost);
 gov_sys_pol_attr_rw(boostpulse_duration);
 gov_sys_pol_attr_rw(io_is_busy);
 gov_sys_pol_attr_rw(use_sched_load);
@@ -1596,6 +1623,7 @@ static struct attribute *interactive_attributes_gov_sys[] = {
 	&timer_rate_gov_sys.attr,
 	&timer_slack_gov_sys.attr,
 	&boost_gov_sys.attr,
+	&touchboost_gov_sys.attr,
 	&boostpulse_gov_sys.attr,
 	&boostpulse_duration_gov_sys.attr,
 	&io_is_busy_gov_sys.attr,
@@ -1626,6 +1654,7 @@ static struct attribute *interactive_attributes_gov_pol[] = {
 	&timer_rate_gov_pol.attr,
 	&timer_slack_gov_pol.attr,
 	&boost_gov_pol.attr,
+	&touchboost_gov_pol.attr,
 	&boostpulse_gov_pol.attr,
 	&boostpulse_duration_gov_pol.attr,
 	&io_is_busy_gov_pol.attr,
@@ -1678,7 +1707,9 @@ static struct cpufreq_interactive_tunables *alloc_tunable(
 	tunables->boostpulse_duration_val = DEFAULT_MIN_SAMPLE_TIME;
 	tunables->timer_slack_val = DEFAULT_TIMER_SLACK;
 	tunables->screen_off_max = DEFAULT_SCREEN_OFF_MAX;
-
+	tunables->boost_val = 0;
+	tunables->touchboost_val = 0;
+	
 	spin_lock_init(&tunables->target_loads_lock);
 	spin_lock_init(&tunables->above_hispeed_delay_lock);
 

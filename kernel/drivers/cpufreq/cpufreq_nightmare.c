@@ -23,8 +23,8 @@
 #include "cpufreq_governor.h"
 
 /* nightmare governor macros */
-#define FREQ_RESPONSIVENESS			1036800
-#define FREQ_RESPONSIVENESS_MAX		2016000
+#define FREQ_RESPONSIVENESS		1401600
+#define FREQ_RESPONSIVENESS_MAX		1843200
 
 #define DEC_CPU_LOAD				60
 #define INC_CPU_LOAD				60

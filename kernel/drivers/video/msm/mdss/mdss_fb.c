@@ -373,7 +373,6 @@ static void mdss_fb_set_bl_brightness(struct led_classdev *led_cdev,
 		mutex_lock(&mfd->bl_lock);
 		mdss_fb_set_backlight(mfd, bl_lvl);
 		mutex_unlock(&mfd->bl_lock);
-		
 	}
 	else {
 		mutex_lock(&mfd->bkl_on_lock);
@@ -383,7 +382,7 @@ static void mdss_fb_set_bl_brightness(struct led_classdev *led_cdev,
 			MDSS_BRIGHT_TO_BL(bl_lvl, value, mfd->panel_info->bl_max,
 					mfd->panel_info->brightness_max);
 			MDSS_BRIGHT_TO_DIM(adjusted_bl_lvl, bl_lvl, adjust_value, 
-                                       32, mfd->panel_info->bl_max);
+                                       mfd->panel_info->bl_min, mfd->panel_info->bl_max);
 			mfd->w_bl_level = adjusted_bl_lvl;
 			mutex_unlock(&mfd->bkl_on_lock);
 			schedule_delayed_work(&mfd->bkl_on_dwork, msecs_to_jiffies(320));
@@ -394,7 +393,7 @@ static void mdss_fb_set_bl_brightness(struct led_classdev *led_cdev,
 			MDSS_BRIGHT_TO_BL(bl_lvl, value, mfd->panel_info->bl_max,
 					mfd->panel_info->brightness_max);
 			MDSS_BRIGHT_TO_DIM(adjusted_bl_lvl, bl_lvl, adjust_value, 
-                                       32, mfd->panel_info->bl_max);
+                                       mfd->panel_info->bl_min, mfd->panel_info->bl_max);
 			mfd->w_bl_level = adjusted_bl_lvl;
 			// display on is currently scheduled
 			mutex_unlock(&mfd->bkl_on_lock);
@@ -414,7 +413,7 @@ static void mdss_fb_set_bl_brightness(struct led_classdev *led_cdev,
 			MDSS_BRIGHT_TO_BL(bl_lvl, value, mfd->panel_info->bl_max,
 					mfd->panel_info->brightness_max);
 			MDSS_BRIGHT_TO_DIM(adjusted_bl_lvl, bl_lvl, adjust_value, 
-                                       32, mfd->panel_info->bl_max);
+                                       mfd->panel_info->bl_min, mfd->panel_info->bl_max);
 			if (!adjusted_bl_lvl && value)
 				adjusted_bl_lvl = 1;
 			mutex_unlock(&mfd->bkl_on_lock);
@@ -1403,7 +1402,7 @@ static int mdss_fb_probe(struct platform_device *pdev)
 		mfd->bl_level = 0;
 
 	mfd->bl_scale = 1024;
-	mfd->bl_min_lvl = 30;
+	mfd->bl_min_lvl = 12;
 	mfd->ad_bl_level = 0;
 	mfd->fb_imgType = MDP_RGBA_8888;
 	mfd->calib_mode_bl = 0;

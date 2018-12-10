@@ -24,7 +24,7 @@
 #endif
 
 #define FP2WAKE 1
-#define FP2WAKEDEBUG 1
+#define FP2WAKEDEBUG 0
 
 #if FP2WAKE
 #define FP2W_DEFAULT			1
@@ -70,7 +70,6 @@ static void fingerprint2wake_pwrtrigger(struct fp_data* fingerprint) {
         return;
 }
 #endif
-
 
 extern void adreno_force_waking_gpu(void);
 unsigned int snr_flag = 0;
@@ -174,6 +173,10 @@ static ssize_t irq_get(struct device* device,
     struct fp_data* fingerprint = dev_get_drvdata(device);
     int irq = gpio_get_value(fingerprint->irq_gpio);
 
+#if FP2WAKEDEBUG
+    pr_info("FPDEBUG - Executing irq_get\n");
+#endif
+
     if (fp_LCD_POWEROFF == atomic_read(&fingerprint->state)) {
 	if (1 == irq) {
 		adreno_force_waking_gpu();
@@ -189,6 +192,11 @@ static ssize_t irq_get(struct device* device,
 			schedule_delayed_work(&fingerprint->fp_reset_dwork, msecs_to_jiffies(FP2W_PWRKEY_REARM));
 		}
 	}
+#if FP2WAKEDEBUG
+	else {
+		pr_info("FPDEBUG - irq == 0\n");
+	}
+#endif
     }
 
     return scnprintf(buffer, PAGE_SIZE, "%i\n", irq);
@@ -203,6 +211,9 @@ static ssize_t irq_ack(struct device* device,
                        const char* buffer, size_t count)
 {
     //struct fp_data* fingerprint = dev_get_drvdata(device);
+#if FP2WAKEDEBUG
+    pr_info("FPDEBUG - irq_ack\n");
+#endif
     fpc_log_info("buffer=%s.\n", buffer);
     return count;
 }
@@ -324,9 +335,13 @@ static irqreturn_t fingerprint_irq_handler(int irq, void* handle)
 {
     struct fp_data* fingerprint = handle;
 
+#if FP2WAKEDEBUG
+    pr_info("FPDEBUG - Executing fingerprint_irq_handle\n");
+#endif
+
     smp_rmb();
 
-    if (fingerprint->wakeup_enabled )
+    if (fingerprint->wakeup_enabled || (fp2w_switch == 1))
     {
         wake_lock_timeout(&fingerprint->ttw_wl, msecs_to_jiffies(FPC_TTW_HOLD_TIME));
     }
@@ -704,6 +719,11 @@ static void fingerprint_input_report(struct fp_data* fingerprint, int key)
 #endif
             fingerprint2wake_pwrtrigger(fingerprint);
         }
+#if FP2WAKEDEBUG
+        else {
+	    pr_info("FPDEBUG - Executing fingerprint_input_report, fp2w_switch: %d, fp_state: %d, key: %d\n", fp2w_switch, atomic_read(&fingerprint->state), key);
+	}
+#endif
     }
 #if FP2WAKEDEBUG
     else {
@@ -976,10 +996,18 @@ static int fb_notifier_callback(struct notifier_block *self, unsigned long event
         if (event == FB_EVENT_BLANK)
         {
             blank = evdata->data;
-            if (*blank == FB_BLANK_UNBLANK)
+            if (*blank == FB_BLANK_UNBLANK) {
                 atomic_set(&fingerprint->state, fp_LCD_UNBLANK);
-            else if (*blank == FB_BLANK_POWERDOWN)
+#if FP2WAKEDEBUG
+		pr_info("FPDEBUG - Executing fb_notifier_callback, fp_LCD_UNBLANK\n");
+#endif
+            }
+            else if (*blank == FB_BLANK_POWERDOWN) {
                 atomic_set(&fingerprint->state, fp_LCD_POWEROFF);
+#if FP2WAKEDEBUG
+		pr_info("FPDEBUG - Executing fb_notifier_callback, fp_LCD_POWEROFF\n");
+#endif
+            }
         }
     }
 

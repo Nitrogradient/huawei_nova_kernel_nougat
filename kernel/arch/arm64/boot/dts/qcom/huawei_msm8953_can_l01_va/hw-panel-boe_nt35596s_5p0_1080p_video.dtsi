@@ -219,7 +219,7 @@
 		24 1b 08 09 05 03 04 a0];
 		qcom,mdss-dsi-t-clk-post = <0xF0>;
 		qcom,mdss-dsi-t-clk-pre = <0xF6>;
-		qcom,mdss-dsi-bl-min-level = <46>;
+		qcom,mdss-dsi-bl-min-level = <12>;
 		qcom,mdss-dsi-bl-max-level = <3640>;
 		qcom,mdss-brightness-max-level = <3640>;
 		qcom,mdss-dsi-dma-trigger = "trigger_sw";
