@@ -662,6 +662,15 @@ static int zswap_frontswap_store(unsigned type, pgoff_t offset,
 			ret = -ENOMEM;
 			goto reject;
 		}
+
+		/* A second zswap_is_full() check after
+		 * zswap_shrink() to make sure it's now
+		 * under the max_pool_percent
+		 */
+		if (zswap_is_full()) {
+			ret = -ENOMEM;
+			goto reject;
+		}
 	}
 
 	/* allocate entry */
@@ -815,10 +824,6 @@ static void zswap_frontswap_invalidate_area(unsigned type)
 	kfree(tree);
 	zswap_trees[type] = NULL;
 }
-
-static struct zpool_ops zswap_zpool_ops = {
-	.evict = zswap_writeback_entry
-};
 
 static void zswap_frontswap_init(unsigned type)
 {
